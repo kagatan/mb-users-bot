@@ -4,8 +4,8 @@
 namespace App\Services\Telegram\Commands;
 
 
+use App;
 use App\Models\TelegramUsers;
-use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Kagatan\MikBillClientAPI\ClientAPI;
@@ -16,6 +16,7 @@ use WeStacks\TeleBot\TeleBot;
 abstract class Command extends CommandHandler
 {
     private $user_id = -1;
+    private $user;
     private $isAuth = false;
 
 
@@ -28,8 +29,15 @@ abstract class Command extends CommandHandler
     {
         parent::__construct($bot, $update);
 
+        // Переопределяем язык и проверим что он поддерживается в боте
+        if (isset($this->update->message->from->language_code) and !in_array($this->update->message->from->language_code, ['uk', 'ru', 'en'])) {
+            $language_code = 'ru';
+        } else {
+            $language_code = $this->update->message->from->language_code;
+        }
+
         // Логируем все что пришло на вход update
-        Log::emergency($this->update);
+//        Log::emergency($this->update);
 
         // Инициализируем ID пользователя
         if (isset($this->update->message->from->id)) {
@@ -48,7 +56,6 @@ abstract class Command extends CommandHandler
                     'first_name' => isset($this->update->message->from->first_name) ? $this->update->message->from->first_name : null,
                     'last_name'  => isset($this->update->message->from->last_name) ? $this->update->message->from->last_name : null,
                 ]);
-
         } else {
             // Создадим пользователя
             $tgUser = TelegramUsers::create([
@@ -56,9 +63,12 @@ abstract class Command extends CommandHandler
                 'username'   => isset($this->update->message->from->username) ? $this->update->message->from->username : null,
                 'first_name' => isset($this->update->message->from->first_name) ? $this->update->message->from->first_name : null,
                 'last_name'  => isset($this->update->message->from->last_name) ? $this->update->message->from->last_name : null,
-                'language'   => isset($this->update->message->from->language_code) ? $this->update->message->from->language_code : null,
+                'language'   => $language_code,
             ]);
         }
+
+        //Заполним пользователя
+        $this->setUser($tgUser);
 
         // Пришел номер пытаемся авторизоваться по ОТП
         $this->ClientAPI = new ClientAPI(config('services.mb_api.host'), config('services.mb_api.secret_key'));
@@ -67,6 +77,9 @@ abstract class Command extends CommandHandler
             $this->ClientAPI->setJWT($tgUser->token);
         }
 
+        //  Переключим язык пользователя
+        App::setLocale($tgUser->language);
+
         // Проверяем авторизацию пользователя
         $this->checkAuth();
     }
@@ -74,6 +87,17 @@ abstract class Command extends CommandHandler
     private function setUserID($user_id)
     {
         $this->user_id = $user_id;
+    }
+
+    public function setUser(TelegramUsers $user)
+    {
+        $this->user = $user;
+    }
+
+
+    public function getUser()
+    {
+        return $this->user;
     }
 
     public function getUserID()

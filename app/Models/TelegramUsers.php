@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Notifications\Notifiable;
 
 /**
  * App\Models\TelegramUsers
@@ -38,10 +39,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @method static \Illuminate\Database\Eloquent\Builder|TelegramUsers whereUsername($value)
  * @method static \Illuminate\Database\Query\Builder|TelegramUsers withTrashed()
  * @method static \Illuminate\Database\Query\Builder|TelegramUsers withoutTrashed()
+ * @property-read \Illuminate\Notifications\DatabaseNotificationCollection|\Illuminate\Notifications\DatabaseNotification[] $notifications
+ * @property-read int|null $notifications_count
  */
 class TelegramUsers extends Model
 {
     use SoftDeletes;
+    use Notifiable;
 
     protected $fillable = [
         'id',

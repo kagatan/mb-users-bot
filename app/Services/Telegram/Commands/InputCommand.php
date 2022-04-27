@@ -2,11 +2,10 @@
 
 namespace App\Services\Telegram\Commands;
 
+use App;
+use App\Helpers\Helper;
 use App\Models\TelegramUsers;
-use App\Services\Telegram\TextManager;
-use WeStacks\TeleBot\Interfaces\UpdateHandler;
-use WeStacks\TeleBot\Objects\Keyboard\InlineKeyboardMarkup;
-use WeStacks\TeleBot\Objects\KeyboardButton;
+use App\Notifications\BotNotification;
 use WeStacks\TeleBot\Objects\Update;
 use WeStacks\TeleBot\TeleBot;
 
@@ -26,32 +25,27 @@ class InputCommand extends Command
         $bot = $this->bot;
 
         $text = isset($update->message->text) ? $update->message->text : '';
-        $command = TextManager::checkCommand($text);
+        $command = Helper::checkCommand($text);
 
+
+        dump($text);
+        dump($command);
         // Если не авторизованы
         if (!$this->isAuth()) {
 
             // Если поделились контактом
             if (isset($update->message->contact)) {
-                $command = "SEND_CONTACT"; // переопределям меню
+                $command = "send_contact"; // переопределяем меню
             }
 
             switch ($command) {
 
-                case "AUTH":
-                    $this->authMenu();
-                    break;
-
-                case "NO_AUTH":
+                case "no_auth":
                     $this->noAuthMenu();
                     break;
 
-                case "SEND_CONTACT":
+                case "send_contact":
                     $this->sendContactMenu();
-                    break;
-
-                case "CONTACT_WITH_ME":
-                    $this->contactWithMeMenu();
                     break;
 
                 default:
@@ -59,43 +53,52 @@ class InputCommand extends Command
             }
         } else {
 
-//            dump($command);
             switch ($command) {
 
-                case "MAIN_MENU":
+                case "main_menu":
                     $this->mainMenu();
                     break;
 
-                case "USER_INFO":
+                case "user_info":
                     $this->userInfoMenu();
                     break;
 
-                case "NEWS":
+                case "news":
                     $this->newsMenu();
                     break;
 
-                case "HELP":
+                case "help":
                     $this->helpMenu();
                     break;
 
-                case "CONTACTS":
+                case "contacts":
                     $this->contactsMenu();
                     break;
 
-                case "ABOUT":
+                case "about":
                     $this->aboutMenu();
                     break;
 
-                case "SETTINGS":
+                case "settings":
                     $this->settingsMenu();
                     break;
 
-                case "NOTIFICATIONS":
+                case "services":
+                    $this->servicesMenu();
+                    break;
+
+                case "notifications":
                     $this->notificationsMenu();
                     break;
 
-                case "LANG":
+                case "lang":
                     $this->langMenu();
+                    break;
+
+                case "lang_ru":
+                case "lang_ua":
+                case "lang_en":
+                    $this->changeLang($command);
                     break;
 
                 default:
@@ -106,7 +109,7 @@ class InputCommand extends Command
     }
 
     /**
-     * Ищем в какое меню нужно зайти
+     * Ищем для какого меню был прислан текст
      */
     private function parseInputText($text)
     {
@@ -118,7 +121,7 @@ class InputCommand extends Command
 
             switch ($lastAction) {
 
-                case "OTP_SENDED":
+                case "otp_sended":
                     $this->applyOtp($text);
                     break;
 
@@ -126,7 +129,6 @@ class InputCommand extends Command
                     // по умолчанию
                     $this->noAuthMenu();
             }
-
         } else {
 
             switch ($lastAction) {
@@ -142,12 +144,6 @@ class InputCommand extends Command
         }
     }
 
-    private function changeLang($text)
-    {
-        $this->setLastAction(__FUNCTION__);
-
-    }
-
     /**
      * Проверяем введенный ОТР код
      */
@@ -156,12 +152,12 @@ class InputCommand extends Command
         $this->setLastAction(__FUNCTION__);
 
         $keyboard = [
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("back")]],
         ];
 
         $response = $this->ClientAPI->authPhoneOtpApply($text);
 
-        if (isset($response['success'])) {
+        if (isset($response['success']['data'])) {
 
             // Привяжем номер user_id телеграма к uid запишем токен
             TelegramUsers::updateOrCreate(
@@ -172,13 +168,13 @@ class InputCommand extends Command
                 ]
             );
 
-            $text = "Спасибо. Бот успешно авторизован! 🎉";
+            $text = trans("apply_otp_text");
 
             $keyboard = [
-                [["text" => TextManager::get("MAIN_MENU")]],
+                [["text" => trans("main_menu")]],
             ];
         } else {
-            $text = "Что то пошло не так...";
+            $text = trans("unknown_error_text");
         }
 
 
@@ -203,29 +199,24 @@ class InputCommand extends Command
         TelegramUsers::where('id', $this->getUserID())
             ->update(['phone' => $phone_number]);
 
-        $text = "Ваш телефон: " . $phone_number;
-
         $keyboard = [
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("back")]],
         ];
 
         // Пришел номер пытаемся авторизоваться по ОТП
         $response = $this->ClientAPI->authPhone($phone_number);
 
-        if (isset($response['success'], $response['code'])) {
-
-            switch ($response['code']) {
-                case 0:
-                    $text = TextManager::get("OTP_SENDED");
-                    $this->setLastAction("OTP_SENDED");
-                    break;
-
-                default:
-                    $text = "Что то пошло не так...";
-            }
+        if (isset($response['code']) and $response['code'] == 0) {
+            $text = trans("otp_sended");
+            $this->setLastAction("otp_sended");
         } else {
-            // АПИ не ответило
-            $text = "Что то пошло не так...";
+            if (isset($response['code']) and $response['code'] == -12) {
+                // АПИ не ответило
+                $text = trans("auth_not_found_user", ["support_phone" => "0 800 00-00-00"]);
+            } else {
+                // АПИ не ответило
+                $text = trans("unknown_error_text");
+            }
         }
 
 
@@ -266,7 +257,6 @@ class InputCommand extends Command
 
     }
 
-
     private function userInfoMenu()
     {
         $this->setLastAction(__FUNCTION__);
@@ -274,48 +264,27 @@ class InputCommand extends Command
         $response = $this->ClientAPI->getUser();
         $user = $response['data'];
 
-        switch ($user['state']) {
-            case 1:
-                $status = 'обычный';
-                break;
-            case 2:
-                $status = 'замороженный';
-                break;
-            case 3:
-                $status = 'отключенный';
-                break;
-            case 4:
-                $status = 'удаленный';
-                break;
-            default:
-                $status = 'обычный';
-        }
-
-
-        $text = "<b>Информация по абоненту:</b>  \n";
-        $text .= "<b>ФИО:</b> " . $user['fio'] . "\n";
-        $text .= "<b>Баланс:</b> " . $user['deposit'] . " руб.\n";
-        $text .= "<b>Кредит:</b> " . $user['credit'] . " руб.\n";
-        $text .= "<b>Тариф:</b> " . $user['tarif'] . "\n";
-        $text .= "<b>Логин:</b> " . $user['user'] . "\n";
+        $text = "<b>" . trans("fio") . ":</b> " . $user['fio'] . "\n";
+        $text .= "<b>" . trans("deposit") . ":</b> " . $user['deposit'] . " " . $user['UE'] . "\n";
+        $text .= "<b>" . trans("credit") . ":</b> " . $user['credit'] . " " . $user['UE'] . "\n";
+        $text .= "<b>" . trans("tariff") . ":</b> " . $user['tarif'] . "\n";
+        $text .= "<b>" . trans("login") . ":</b> " . $user['user'] . "\n";
         $text .= "<b>UID:</b>" . $user['useruid'] . " \n";
-        $text .= "<b>Договор:</b>" . $user['numdogovor'] . " \n";
+        $text .= "<b>" . trans("dogovor") . ":</b>" . $user['numdogovor'] . " \n";
         if ($user['blocked']) {
-            $text .= "<b>Интернет:</b> 🚫 \n";
+            $text .= "<b>" . trans("internet") . ":</b> 🚫 \n";
         } else {
-            $text .= "<b>Интернет:</b> ✅ \n";
+            $text .= "<b>" . trans("internet") . ":</b> ✅ \n";
 
             if (!empty($user['date_itog'])) {
-                $text .= "<b>Дата отключения:</b> " . $user['date_itog'] . " \n";
-                $text .= "<b>Осталось дней:</b> " . $user['days_left'] . " \n";
+                $text .= "<b>" . trans("date_off") . ":</b> " . $user['date_itog'] . " \n";
+                $text .= "<b>" . trans("days_left") . ":</b> " . $user['days_left'] . " \n";
             }
         }
-//        $text .= "<b>IP:</b> " . $user['framed_ip'] . "\n";
-//        $text .= "<b>Cтатус:</b> " . $status . "\n";
 
 
         $keyboard = [
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("back")]],
         ];
 
         $this->sendMessage([
@@ -337,7 +306,7 @@ class InputCommand extends Command
         $text = "Здесь в будущем появится информация о вашем провайдере";
 
         $keyboard = [
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("back")]],
         ];
 
         $this->sendMessage([
@@ -351,50 +320,6 @@ class InputCommand extends Command
         ]);
     }
 
-
-    private function authMenu()
-    {
-        $this->setLastAction(__FUNCTION__);
-
-        $text = "Для старта отправьте нам Ваш номер телефона, нажав кнопку <b>Отправить контакт</b>";
-
-        $keyboard = [
-            [["text" => TextManager::get("SEND_CONTACT"), "request_contact" => true], ["text" => TextManager::get("BACK")]],
-        ];
-
-        $this->sendMessage([
-            'text'         => $text,
-            'parse_mode'   => 'HTML',
-            'reply_markup' => [
-                'keyboard'          => $keyboard,
-                'resize_keyboard'   => true,
-                'one_time_keyboard' => true
-            ]
-        ]);
-
-    }
-
-    private function contactWithMeMenu()
-    {
-        $this->setLastAction(__FUNCTION__);
-
-        $text = "Напишите Ваш вопрос нашей службе поддержки, перейдя по ссылке https://t.me/ACPMikBiLL. Также мы можем Вам позвонить - напишите свой номер телефона";
-
-        $keyboard = [
-            [["text" => TextManager::get("BACK")]],
-        ];
-
-        $this->sendMessage([
-            'text'         => $text,
-            'parse_mode'   => 'HTML',
-            'reply_markup' => [
-                'keyboard'          => $keyboard,
-                'resize_keyboard'   => true,
-                'one_time_keyboard' => true
-            ]
-        ]);
-
-    }
 
     private function langMenu()
     {
@@ -403,8 +328,8 @@ class InputCommand extends Command
         $text = "Выберите язык общения в боте";
 
         $keyboard = [
-            [["text" => "🇺🇦 UA"], ["text" => "🇷🇺 RU"], ["text" => "🇺🇸 EN"]],
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("lang_ua")], ["text" => trans("lang_ru")], ["text" => trans("lang_en")]],
+            [["text" => trans("back")]],
         ];
 
         $this->sendMessage([
@@ -418,6 +343,55 @@ class InputCommand extends Command
         ]);
 
     }
+
+
+    private function changeLang($command)
+    {
+        $this->setLastAction(__FUNCTION__);
+
+        switch ($command) {
+            case  'LANG_UK':
+                $locale = 'uk';
+                break;
+
+            case  'LANG_RU':
+                $locale = 'ru';
+                break;
+            case  'LANG_EN':
+                $locale = 'en';
+                break;
+
+            default:
+                $locale = 'ru';
+        }
+
+        // Установим язык
+        App::setLocale($locale);
+
+        // Обновим пользователя
+        TelegramUsers::whereId($this->getUserID())
+            ->update([
+                'language' => $locale,
+            ]);
+
+        $text = trans("lang_changed") . " " . trans($command);
+
+        $keyboard = [
+            [["text" => trans("back")]],
+        ];
+
+        $this->sendMessage([
+            'text'         => $text,
+            'parse_mode'   => 'HTML',
+            'reply_markup' => [
+                'keyboard'          => $keyboard,
+                'resize_keyboard'   => true,
+                'one_time_keyboard' => true
+            ]
+        ]);
+
+    }
+
 
     private function settingsMenu()
     {
@@ -428,8 +402,9 @@ class InputCommand extends Command
         $text .= "🇺🇸 <b>Выбор языка</b> - выберите язык, на котором бот будет вести диалог; \n";
 
         $keyboard = [
-            [["text" => TextManager::get("NOTIFICATIONS")], ["text" => TextManager::get("LANG")]],
-            [["text" => TextManager::get("BACK")]],
+//            [["text" => trans("notifications")], ["text" => trans("lang")]],
+[["text" => trans("lang")]],
+[["text" => trans("back")]],
         ];
 
         $this->sendMessage([
@@ -453,7 +428,7 @@ class InputCommand extends Command
         $text .= "🔔 За 3 дня до отключения \n\n";
 
         $keyboard = [
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("back")]],
         ];
 
         $this->sendMessage([
@@ -477,7 +452,7 @@ class InputCommand extends Command
         $text .= "telegram: @kagatan";
 
         $keyboard = [
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("back")]],
         ];
 
         $this->sendMessage([
@@ -496,10 +471,14 @@ class InputCommand extends Command
     {
         $this->setLastAction(__FUNCTION__);
 
+        $tgUsers = $this->getUser();
+
+        $tgUsers->notify(new BotNotification("Hello my friend"));
+
         $text = "🤯 Мы сейчас сильно заняты. Если что то срочное позвоните в техподдержку...";
 
         $keyboard = [
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("back")]],
         ];
 
         $this->sendMessage([
@@ -520,7 +499,32 @@ class InputCommand extends Command
         $text = "🤐 Тсс... Здесь будут новости, но чуть позже...";
 
         $keyboard = [
-            [["text" => TextManager::get("BACK")]],
+            [["text" => trans("back")]],
+        ];
+
+        $this->sendMessage([
+            'text'         => $text,
+            'parse_mode'   => 'HTML',
+            'reply_markup' => [
+                'keyboard'          => $keyboard,
+                'resize_keyboard'   => true,
+                'one_time_keyboard' => true
+            ]
+        ]);
+    }
+
+    private function servicesMenu()
+    {
+        $this->setLastAction(__FUNCTION__);
+
+        // Получаем подключенные услуги
+        $response = $this->ClientAPI->getUser();
+        $user = $response['data'];
+
+        $text = trans("Hello");
+
+        $keyboard = [
+            [["text" => trans("back")]],
         ];
 
         $this->sendMessage([
@@ -538,12 +542,19 @@ class InputCommand extends Command
     {
         $this->setLastAction(__FUNCTION__);
 
-        $text = TextManager::get("MAIN_MENU_TEXT");
+        $text = trans("main_menu_text");
+
+//        $keyboard = [
+//            [["text" => trans("user_info")], ["text" => trans("services")]],
+//            [["text" => trans("news")], ["text" => trans("contacts")]],
+//            [["text" => trans("help")], ["text" => trans("settings")]]
+//        ];
+//
 
         $keyboard = [
-            [["text" => TextManager::get("USER_INFO")], ["text" => TextManager::get("NEWS")]],
-            [["text" => TextManager::get("HELP")], ["text" => TextManager::get("CONTACTS")]],
-            [["text" => TextManager::get("SETTINGS")]]
+            [["text" => trans("user_info")], ["text" => trans("news")]],
+            [["text" => trans("help")], ["text" => trans("contacts")]],
+            [["text" => trans("settings")]]
         ];
 
         $this->sendMessage([
@@ -560,15 +571,15 @@ class InputCommand extends Command
     {
         $this->setLastAction(__FUNCTION__);
 
-        $text = "👉 Для начала необходимо пройти авторизацию в сервисе";
-
+        $text = trans("auth_notice");
 
         $keyboard = [
-            [["text" => TextManager::get("AUTH")], ["text" => TextManager::get("CONTACT_WITH_ME")]],
+            [["text" => trans("send_contact"), "request_contact" => true]],
         ];
 
         $this->sendMessage([
             'text'         => $text,
+            'parse_mode'   => 'HTML',
             'reply_markup' => [
                 'keyboard'          => $keyboard,
                 'resize_keyboard'   => true,
