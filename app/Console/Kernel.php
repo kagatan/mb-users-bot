@@ -25,6 +25,9 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule)
     {
         // $schedule->command('inspire')->hourly();
+
+        // Запуск команды на отправку оповещения за n-дней до отключения
+        // $schedule->command('bot:left-day 3 --send')->dailyAt('09:00');;
     }
 
     /**

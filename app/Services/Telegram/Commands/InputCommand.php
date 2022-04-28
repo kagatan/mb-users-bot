@@ -96,7 +96,7 @@ class InputCommand extends Command
                     break;
 
                 case "lang_ru":
-                case "lang_ua":
+                case "lang_uk":
                 case "lang_en":
                     $this->changeLang($command);
                     break;
@@ -328,7 +328,7 @@ class InputCommand extends Command
         $text = "Выберите язык общения в боте";
 
         $keyboard = [
-            [["text" => trans("lang_ua")], ["text" => trans("lang_ru")], ["text" => trans("lang_en")]],
+            [["text" => trans("lang_uk")], ["text" => trans("lang_ru")], ["text" => trans("lang_en")]],
             [["text" => trans("back")]],
         ];
 
@@ -349,15 +349,16 @@ class InputCommand extends Command
     {
         $this->setLastAction(__FUNCTION__);
 
+        dump($command);
         switch ($command) {
-            case  'LANG_UK':
+            case  'lang_uk':
                 $locale = 'uk';
                 break;
 
-            case  'LANG_RU':
+            case  'lang_ru':
                 $locale = 'ru';
                 break;
-            case  'LANG_EN':
+            case  'lang_en':
                 $locale = 'en';
                 break;
 
@@ -472,8 +473,6 @@ class InputCommand extends Command
         $this->setLastAction(__FUNCTION__);
 
         $tgUsers = $this->getUser();
-
-        $tgUsers->notify(new BotNotification("Hello my friend"));
 
         $text = "🤯 Мы сейчас сильно заняты. Если что то срочное позвоните в техподдержку...";
 
